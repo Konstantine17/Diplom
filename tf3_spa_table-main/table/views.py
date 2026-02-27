@@ -1,68 +1,83 @@
-from rest_framework import viewsets, filters, status
-from rest_framework.decorators import action
-from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticatedOrReadOnly
-from django_filters.rest_framework import DjangoFilterBackend
-from django.http import HttpResponse
-import csv
+from datetime import date
+
+from django.db.models import QuerySet
+from django.utils.dateparse import parse_date
+from rest_framework import generics
+from rest_framework.pagination import PageNumberPagination
+
 from .models import TableItem
 from .serializers import TableItemSerializer
 
-class TableItemViewSet(viewsets.ModelViewSet):
-    """
-    ViewSet для CRUD операций с таблицей
-    Поддерживает фильтрацию, поиск и сортировку
-    """
-    queryset = TableItem.objects.all()
+
+class TableItemPagination(PageNumberPagination):
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
+
+class TableItemListAPIView(generics.ListAPIView):
     serializer_class = TableItemSerializer
-    permission_classes = [IsAuthenticatedOrReadOnly]
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['status']
-    search_fields = ['title', 'description']
-    ordering_fields = ['created_at', 'title', 'status']
-    ordering = ['-created_at']
-    
-    @action(detail=False, methods=['get'])
-    def stats(self, request):
-        """Статистика по статусам"""
-        total = self.queryset.count()
-        new = self.queryset.filter(status='new').count()
-        in_progress = self.queryset.filter(status='in_progress').count()
-        completed = self.queryset.filter(status='completed').count()
-        cancelled = self.queryset.filter(status='cancelled').count()
-        
-        return Response({
-            'total': total,
-            'new': new,
-            'in_progress': in_progress,
-            'completed': completed,
-            'cancelled': cancelled,
-        })
-    
-    @action(detail=False, methods=['post'])
-    def bulk_delete(self, request):
-        """Массовое удаление записей"""
-        ids = request.data.get('ids', [])
-        deleted, _ = self.queryset.filter(id__in=ids).delete()
-        return Response({'deleted': deleted}, status=status.HTTP_204_NO_CONTENT)
-    
-    @action(detail=False, methods=['get'])
-    def export_csv(self, request):
-        """Экспорт данных в CSV"""
-        response = HttpResponse(content_type='text/csv')
-        response['Content-Disposition'] = 'attachment; filename="table_items.csv"'
-        
-        writer = csv.writer(response)
-        writer.writerow(['ID', 'Title', 'Description', 'Status', 'Created At', 'Updated At'])
-        
-        for item in self.queryset:
-            writer.writerow([
-                item.id,
-                item.title,
-                item.description,
-                item.status,
-                item.created_at,
-                item.updated_at
-            ])
-        
-        return response
+    pagination_class = TableItemPagination
+
+    def get_queryset(self) -> QuerySet[TableItem]:
+        queryset = TableItem.objects.all()
+        queryset = self._apply_filter(queryset)
+        queryset = self._apply_sorting(queryset)
+        return queryset
+
+    def _apply_sorting(self, queryset: QuerySet[TableItem]) -> QuerySet[TableItem]:
+        ordering = self.request.query_params.get('ordering', '')
+        allowed_ordering = {'name', 'quantity', 'distance'}
+
+        field = ordering[1:] if ordering.startswith('-') else ordering
+        if field in allowed_ordering:
+            return queryset.order_by(ordering)
+        return queryset.order_by('-date')
+
+    def _apply_filter(self, queryset: QuerySet[TableItem]) -> QuerySet[TableItem]:
+        column = self.request.query_params.get('filter_column', '')
+        condition = self.request.query_params.get('filter_condition', '')
+        raw_value = self.request.query_params.get('filter_value', '').strip()
+
+        if not column or not condition or raw_value == '':
+            return queryset
+
+        if column not in {'date', 'name', 'quantity', 'distance'}:
+            return queryset
+
+        lookup = self._build_lookup(column, condition)
+        if not lookup:
+            return queryset
+
+        parsed_value = self._parse_value(column, raw_value)
+        if parsed_value is None:
+            return queryset.none()
+
+        return queryset.filter(**{lookup: parsed_value})
+
+    @staticmethod
+    def _build_lookup(column: str, condition: str) -> str:
+        mapping = {
+            'eq': '',
+            'contains': '__icontains',
+            'gt': '__gt',
+            'lt': '__lt',
+        }
+        suffix = mapping.get(condition)
+        if suffix is None:
+            return ''
+        return f'{column}{suffix}'
+
+    @staticmethod
+    def _parse_value(column: str, raw_value: str):
+        if column == 'date':
+            parsed = parse_date(raw_value)
+            return parsed if isinstance(parsed, date) else None
+        if column == 'quantity':
+            return int(raw_value) if raw_value.isdigit() else None
+        if column == 'distance':
+            try:
+                return float(raw_value)
+            except ValueError:
+                return None
+        return raw_value

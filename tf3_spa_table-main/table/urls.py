@@ -1,10 +1,7 @@
-from django.urls import path, include
-from rest_framework.routers import DefaultRouter
-from . import views
+from django.urls import path
 
-router = DefaultRouter()
-router.register(r'items', views.TableItemViewSet, basename='tableitem')
+from .views import TableItemListAPIView
 
 urlpatterns = [
-    path('', include(router.urls)),  # Убрали 'api/' отсюда!
+    path('items/', TableItemListAPIView.as_view(), name='table-items'),
 ]

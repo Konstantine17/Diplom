@@ -1,39 +1,78 @@
-# 📊 SPA Table Application
+# SPA Table (Django + DRF + React)
 
-Веб-приложение для управления таблицей с Single Page Application интерфейсом. Проект разработан в качестве дипломной работы.
+Проект реализует таблицу в формате SPA с серверной пагинацией, фильтрацией и сортировкой.
 
-## 🚀 Функциональность
+## Что реализовано по ТЗ
 
-- ✅ **CRUD операции** - создание, чтение, обновление и удаление записей
-- ✅ **Фильтрация** - по статусу (Новый, В работе, Завершен, Отменен)
-- ✅ **Поиск** - по названию и описанию
-- ✅ **Сортировка** - по всем полям таблицы
-- ✅ **Адаптивный дизайн** - работает на всех устройствах
+- Таблица на 4 колонки: `Дата`, `Название`, `Количество`, `Расстояние`.
+- SPA-интерфейс на React (без готовых табличных компонентов).
+- Сортировка по `Название`, `Количество`, `Расстояние` (без сортировки по дате).
+- Фильтрация через:
+  - выпадающий список колонки;
+  - выпадающий список условий (`eq`, `contains`, `gt`, `lt`);
+  - текстовое поле значения.
+- Серверная пагинация через DRF.
+- Автозаполнение БД случайными данными при старте контейнера.
+- Контейнеризация Docker + PostgreSQL + Nginx.
+- Nginx проксирует API (backend) и раздаёт frontend.
+- Swagger документация: `/api/docs/`.
+- CORS настраивается переменной `CORS_ALLOWED_ORIGINS`.
 
-## 🛠 Технологический стек
+## Стек
 
-### Backend
-- Python 3.13
-- Django 6.0.2
-- Django REST Framework
-- SQLite
-- django-filter (для фильтрации)
+- Python 3.11
+- Django 4.2 + DRF
+- PostgreSQL
+- Django ORM
+- React + Axios + Bootstrap
+- Nginx
+- Docker / Docker Compose
 
-### Frontend
-- HTML5
-- CSS3
-- JavaScript (ES6+)
-- Bootstrap 5
-- Font Awesome
+## Структура проекта
 
-### Инструменты
-- Git & GitHub
-- Virtual Environment
-- Git Bash
+- `config/` — настройки Django, маршруты.
+- `table/` — модель, API, тесты, seed-команда.
+- `templates/index.html` — SPA-страница.
+- `static/js/app.jsx` — React логика таблицы.
+- `static/css/style.css` — стили.
+- `docker-compose.yml` — сервисы `db`, `web`, `nginx`.
+- `nginx.conf` — проксирование и раздача фронтенда.
 
-## 📦 Установка и запуск
+## Запуск
 
-1. **Клонировать репозиторий:**
 ```bash
-git clone git@github.com:ZhannaIvanova10/tf3_spa_table.git
-cd tf3_spa_table
+docker compose up --build
+```
+
+После старта:
+
+- Frontend: `http://localhost/`
+- API: `http://localhost/api/items/`
+- Swagger: `http://localhost/api/docs/`
+
+## API фильтрации/сортировки/пагинации
+
+`GET /api/items/`
+
+Параметры:
+
+- `page`, `page_size`
+- `ordering`: `name`, `-name`, `quantity`, `-quantity`, `distance`, `-distance`
+- `filter_column`: `date | name | quantity | distance`
+- `filter_condition`: `eq | contains | gt | lt`
+- `filter_value`: строковое значение
+
+Пример:
+
+```bash
+curl "http://localhost/api/items/?ordering=-quantity&filter_column=name&filter_condition=contains&filter_value=Маршрут&page=1"
+```
+
+## Тесты и покрытие
+
+```bash
+coverage run manage.py test
+coverage report
+```
+
+Целевой порог покрытия: не менее 75%.
